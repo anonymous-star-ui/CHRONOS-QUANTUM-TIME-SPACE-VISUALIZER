@@ -631,7 +631,7 @@
       clockCtx.stroke();
     }
 
-    /* 2. CESIUM FOUNTAIN */
+  /* 2. CESIUM FOUNTAIN (DELTA-TIME NORMALIZED FOR MOBILE & DESKTOP) */
     const cesiumCanvas = document.getElementById('cesiumCanvas');
     const cesiumCtx = cesiumCanvas.getContext('2d');
     const cesiumCyclesEl = document.getElementById('cesiumCycles');
@@ -649,11 +649,13 @@
         this.gravity = 0.07;
         this.state = 3;
       }
-      update() {
-        this.vy += this.gravity;
-        this.x += this.vx;
-        this.y += this.vy;
-        if (this.y >= 110 && this.y <= 160 && this.state === 3 && Math.random() < 0.16) this.state = 4;
+      update(dt = 1) {
+        this.vy += this.gravity * dt;
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        if (this.y >= 110 && this.y <= 160 && this.state === 3 && Math.random() < (0.16 * dt)) {
+          this.state = 4;
+        }
         if (this.y > 330) this.reset();
       }
       draw(ctx) {
@@ -663,12 +665,16 @@
         ctx.fill();
       }
     }
-    const cesiumAtoms = Array.from({ length: 140 }, () => new CesiumAtom());
 
-    function renderEngine2(totalSecondsToday, minutes, seconds, msExact) {
+    // Auto-detect mobile screen to dynamically balance particle budget
+    const isMobileDevice = window.innerWidth < 640;
+    const atomPoolSize = isMobileDevice ? 70 : 140;
+    const cesiumAtoms = Array.from({ length: atomPoolSize }, () => new CesiumAtom());
+
+    function renderEngine2(totalSecondsToday, minutes, seconds, msExact, dt = 1) {
       if (!isCardVisible('cesium')) return;
       cesiumCtx.clearRect(0, 0, 480, 360);
-      rfOffset += 0.28;
+      rfOffset += 0.28 * dt;
       const cLeft = 120, cRight = 360;
 
       cesiumCtx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
@@ -692,7 +698,10 @@
       cesiumCtx.font = '9px monospace';
       cesiumCtx.fillText("RAMSEY MICROWAVE CAVITY (9.192 GHz)", cLeft + 10, 102);
 
-      cesiumAtoms.forEach(atom => { atom.update(); atom.draw(cesiumCtx); });
+      cesiumAtoms.forEach(atom => { 
+        atom.update(dt); 
+        atom.draw(cesiumCtx); 
+      });
 
       const totalCesiumCycles = BigInt(Math.floor(totalSecondsToday * CESIUM_FREQ));
       cesiumCyclesEl.textContent = totalCesiumCycles.toLocaleString();
@@ -700,7 +709,6 @@
       const secondsIntoHour = (minutes * 60) + seconds + (msExact / 1000);
       cesiumHourProgress.textContent = `${((secondsIntoHour / 3600) * 100).toFixed(2)}% of current hr target`;
     }
-
     /* 3. STRONTIUM LATTICE */
     const latticeCanvas = document.getElementById('latticeCanvas');
     const latticeCtx = latticeCanvas.getContext('2d');
@@ -1188,9 +1196,17 @@
       sundialCtx.stroke();
     }
 
-    /* Master Unified Animation Loop */
+  /* Master Unified Animation Loop with Delta-Time Compensation */
+    let lastMasterTime = performance.now();
+
     function masterTick() {
       const now = new Date();
+      const currentMasterTime = performance.now();
+      
+      // Target is 60 FPS (16.66ms gap). Normalize delta dt factor
+      const dt = Math.min((currentMasterTime - lastMasterTime) / (1000 / 60), 2.5);
+      lastMasterTime = currentMasterTime;
+
       let hours = now.getHours();
       let minutes = now.getMinutes();
       let seconds = now.getSeconds();
@@ -1216,7 +1232,7 @@
       const totalSecondsToday = (hours * 3600) + (minutes * 60) + seconds + (ms / 1000);
 
       renderEngine1(hours, minutes, seconds, ms, us);
-      renderEngine2(totalSecondsToday, minutes, seconds, ms);
+      renderEngine2(totalSecondsToday, minutes, seconds, ms, dt);
       renderEngine3(totalSecondsToday);
       renderEngine4(hours, minutes, seconds, ms, totalSecondsToday);
       renderEngine5(totalSecondsToday);
